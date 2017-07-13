@@ -3,20 +3,28 @@
 DOMAINS=();
 AVAILABLE_DOMAINS=();
 EMAIL="";
+SLACK_URL="";
+SLACK_HIGHLIGHT="";
 
 function _usage() {
-  echo "Usage: $0 -d domain1.tld [-d domain2.tld ...] [-m email]"
+  echo "Usage: $0 -d domain1.tld [-d domain2.tld ...] [-m email] [-s slack-url] [-h slack-highlight-name]"
 }
 
 function _getOpts {
   local OPTIND
-  while getopts ":d:m:" opt; do
+  while getopts ":d:m:s:h:" opt; do
     case $opt in
       d)
         DOMAINS+=($OPTARG)
         ;;
       m)
         EMAIL=$OPTARG
+        ;;
+      s)
+        SLACK_URL=$OPTARG
+        ;;
+      h)
+        SLACK_HIGHLIGHT=$OPTARG
         ;;
       :)
         echo "Option -$OPTARG requires an argument." >&2
@@ -48,8 +56,8 @@ function _domainLookup() {
   fi
 }
 
-function _sendMail() {
-  if [ "0" -ne "${#AVAILABLE_DOMAINS[@]}" ] && [ -n "$EMAIL" ]; then
+function _getAvailableDomains() {
+  if [ "0" -ne "${#AVAILABLE_DOMAINS[@]}" ]; then
     AVAILABLE_DOMAINS_STRING="";
     for d in ${AVAILABLE_DOMAINS[@]}; do
       if [ -n "$AVAILABLE_DOMAIN_STRING" ]; then
@@ -58,9 +66,24 @@ function _sendMail() {
 
       AVAILABLE_DOMAIN_STRING="${AVAILABLE_DOMAIN_STRING}$d"
     done
-    
-    export REPLYTO=domainlookup@nextunit.io
+
+    echo $AVAILABLE_DOMAIN_STRING
+  fi
+}
+
+function _sendMail() {
+  if [ "0" -ne "${#AVAILABLE_DOMAINS[@]}" ] && [ -n "$EMAIL" ]; then
+    AVAILABLE_DOMAINS_STRING=$(_getAvailableDomains);
+
+    export REPLYTO=noreply@nextunit.io
     echo "This domains are currently available: $AVAILABLE_DOMAIN_STRING" | mail -aFrom:domainlookup@nextunit.io -s "Domains available" $EMAIL
+  fi
+}
+
+function _sendSlack() {
+  if [ "0" -ne "${#AVAILABLE_DOMAINS[@]}" ] && [ -n "$SLACK_URL" ]; then
+    AVAILABLE_DOMAINS_STRING=$(_getAvailableDomains);
+    curl -X POST -H 'Content-type: application/json' --data "{\"text\":\"${SLACK_HIGHLIGHT} Domains are available: ${AVAILABLE_DOMAINS_STRING}\"}" $SLACK_URL
   fi
 }
 
@@ -72,5 +95,8 @@ for d in ${DOMAINS[@]}; do
 done
 
 _sendMail
+_sendSlack
 
 echo "Done."
+
+
